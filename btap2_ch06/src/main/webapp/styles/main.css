@@ -1,0 +1,11 @@
+* { box-sizing: border-box; }
+
+body { font-family: Arial, Helvetica, sans-serif; margin: 0 2em; }
+h1 { color: teal; margin: 1em 0 .5em; }
+
+label { float: left; width: 6em; margin-bottom: .5em; }
+input[type="text"], input[type="email"] {
+  width: 15em; margin-left: .5em; margin-bottom: .5em; padding: .35em .5em;
+}
+br { clear: both; }
+#submit { margin-left: .5em; padding: .45em 1em; cursor: pointer; }
