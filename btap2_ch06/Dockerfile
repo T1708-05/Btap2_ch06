@@ -2,37 +2,33 @@
 FROM maven:3.9.9-eclipse-temurin-17 AS build
 WORKDIR /app
 
-# cache dependencies
+# Cache deps
 COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
 
-# build WAR
+# Build WAR
 COPY src ./src
 RUN mvn -B -q -DskipTests package
 
 # ===== Run stage (Tomcat 11 / Jakarta) =====
 FROM tomcat:11.0-jre17-temurin
 
-# stop shutdown port & clean default apps
-RUN sed -ri 's/port="8005"/port="-1"/' /usr/local/tomcat/conf/server.xml \
- && rm -rf /usr/local/tomcat/webapps/*
+ENV CATALINA_HOME=/usr/local/tomcat
+WORKDIR $CATALINA_HOME
 
-# deploy WAR as ROOT.war
-COPY --from=build /app/target/*.war /usr/local/tomcat/webapps/ROOT.war
+# Tắt cổng shutdown & xóa webapps mẫu
+RUN sed -ri 's/port="8005"/port="-1"/' $CATALINA_HOME/conf/server.xml \
+ && rm -rf $CATALINA_HOME/webapps/*
 
-# memory hint (optional, good for free plans)
-ENV CATALINA_OPTS="-Xms128m -Xmx384m"
+# Đổi connector 8080 -> ${PORT} để Tomcat đọc từ System property PORT
+# (Tomcat hỗ trợ property substitution trong server.xml)
+RUN sed -ri 's/port="8080"/port="${PORT}"/' $CATALINA_HOME/conf/server.xml
 
-# honor PORT if provided by platform (e.g. Render)
-COPY <<'EOF' /usr/local/bin/run.sh
-#!/bin/sh
-: ${PORT:=8080}
-# patch server.xml connector to use $PORT at runtime
-sed -ri "s/port=\"8080\" protocol=\"HTTP\/1.1\"/port=\"${PORT}\" protocol=\"HTTP\/1.1\"/" \
-  "$CATALINA_HOME/conf/server.xml"
-exec catalina.sh run
-EOF
-RUN chmod +x /usr/local/bin/run.sh
+# Tạo script start (KHÔNG dùng heredoc)
+RUN /bin/sh -c 'echo "#!/bin/sh"                       >  /usr/local/bin/run.sh \
+ && /bin/sh -c   "echo \": \${PORT:=8080}\"            >> /usr/local/bin/run.sh" \
+ && /bin/sh -c   "echo \"export CATALINA_OPTS=\\\"\\$CATALINA_OPTS -DPORT=\\${PORT}\\\"\" >> /usr/local/bin/run.sh" \
+ && /bin/sh -c   "echo \"exec catalina.sh run\"        >> /usr/local/bin/run.sh" \
+ && chmod +x /usr/local/bin/run.sh
 
-EXPOSE 8080
-CMD ["/usr/local/bin/run.sh"]
+# Deplo
